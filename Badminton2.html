@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Badminton Picker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background:#f4f6f8;
+  margin:0;
+  padding:15px;
+}
+h1{text-align:center;}
+.card{
+  background:white;
+  padding:15px;
+  border-radius:14px;
+  margin-bottom:15px;
+  box-shadow:0 4px 10px rgba(0,0,0,0.05);
+}
+textarea,input{
+  width:100%;
+  font-size:16px;
+  padding:10px;
+  border-radius:10px;
+  border:1px solid #ddd;
+}
+button{
+  width:100%;
+  font-size:22px;
+  padding:18px;
+  border:none;
+  border-radius:16px;
+  background:#1e88e5;
+  color:white;
+  margin-top:10px;
+}
+.court{font-size:18px;margin-bottom:10px;}
+.sitout{color:#d32f2f;font-weight:600;}
+.hidden{display:none;}
+</style>
+</head>
+
+<body>
+
+<h1>🏸 Badminton Picker</h1>
+
+<div id="setup" class="card">
+  <p><b>Players (one per line)</b></p>
+  <textarea id="playersInput" rows="6"></textarea>
+
+  <p><b>Number of courts</b></p>
+  <input id="courtsInput" type="number" min="1" value="1">
+
+  <button onclick="start()">Start Games</button>
+</div>
+
+<div id="game" class="hidden">
+  <div id="courts" class="card"></div>
+  <div id="sitouts" class="card"></div>
+  <button onclick="nextRound()">▶ Next Round</button>
+  <button onclick="reset()" style="background:#555;margin-top:15px;">Reset</button>
+</div>
+
+<script>
+let allPlayers=[];
+let sitouts=[];
+let courts=1;
+
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    let j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+}
+
+function start(){
+  let raw=document.getElementById("playersInput").value.trim();
+  allPlayers=raw.split("\n").map(p=>p.trim()).filter(p=>p);
+courts = parseInt(document.getElementById("courtsInput").value);
+
+let maxCourts = Math.floor(allPlayers.length / 4);
+if (courts > maxCourts) {
+  courts = maxCourts;
+  alert("Not enough players for that many courts. Courts set to " + courts);
+}
+
+if (courts < 1) {
+  alert("Need at least 4 players.");
+  return;
+}
+  localStorage.setItem("badminton_players",JSON.stringify(allPlayers));
+  localStorage.setItem("badminton_courts",courts);
+  sitouts=[];
+  document.getElementById("setup").classList.add("hidden");
+  document.getElementById("game").classList.remove("hidden");
+  nextRound();
+}
+
+function nextRound(){
+  let pool=[...sitouts];
+  let rest=allPlayers.filter(p=>!sitouts.includes(p));
+  shuffle(rest);
+  pool=pool.concat(rest);
+
+  let needed=courts*4;
+  let playing=pool.slice(0,needed);
+  sitouts=pool.slice(needed);
+
+  shuffle(playing);
+  renderCourts(playing);
+  renderSitouts();
+}
+
+function renderCourts(players){
+  let html="<h2>Courts</h2>";
+  for(let i=0;i<courts;i++){
+    let c=players.slice(i*4,i*4+4);
+    if(c.length===4){
+      html+=`<div class="court"><b>Court ${i+1}</b>: ${c[0]} & ${c[1]} vs ${c[2]} & ${c[3]}</div>`;
+    }
+  }
+  document.getElementById("courts").innerHTML=html;
+}
+
+function renderSitouts(){
+  if(sitouts.length===0){
+    document.getElementById("sitouts").innerHTML="<b>No one sitting out</b>";
+  }else{
+    document.getElementById("sitouts").innerHTML=
+      `<b class="sitout">Sitting out (priority next game):</b><br>${sitouts.join(", ")}`;
+  }
+}
+
+function reset(){
+  if(confirm("Reset?")){
+    document.getElementById("game").classList.add("hidden");
+    document.getElementById("setup").classList.remove("hidden");
+  }
+}
+
+// auto-load last players
+let saved=JSON.parse(localStorage.getItem("badminton_players")||"null");
+if(saved){
+  document.getElementById("playersInput").value=saved.join("\n");
+  document.getElementById("courtsInput").value=localStorage.getItem("badminton_courts")||1;
+}
+</script>
+
+</body>
+</html>
