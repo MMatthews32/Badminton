@@ -42,7 +42,7 @@ let allPlayers = [];
 let activePlayers = [];
 let courts = 1;
 let sitouts = [];
-let rotationQueue = [];  // queue of players who have not yet sat
+let rotationRemaining = []; // players who haven't sat in this cycle
 let lastSitouts = [];
 
 function shuffle(a){for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];}}
@@ -65,7 +65,7 @@ function start(){
   }
 
   sitouts = [];
-  rotationQueue = [...activePlayers];
+  rotationRemaining = [...activePlayers];
   lastSitouts = [];
 
   localStorage.setItem("badminton_players",JSON.stringify(allPlayers));
@@ -80,32 +80,40 @@ function nextRound(){
   let totalNeeded = courts * 4;
   let numSitOuts = activePlayers.length - totalNeeded;
 
-  if(numSitOuts < 1) numSitOuts = 1;
-  if(numSitOuts > activePlayers.length - 1) numSitOuts = activePlayers.length - 1;
+  // If everyone fits on courts, nobody sits out
+  if(numSitOuts <= 0){
+    sitouts = [];
+    lastSitouts = [];
+    let pool = [...activePlayers];
+    shuffle(pool);
+    renderCourts(pool);
+    renderSitouts();
+    return;
+  }
+
+  // Step 1: reset rotation if not enough remaining
+  if(rotationRemaining.length < numSitOuts){
+    rotationRemaining = [...activePlayers];
+  }
+
+  // Step 2: shuffle remaining for randomness
+  shuffle(rotationRemaining);
 
   sitouts = [];
 
-  // pick sit-outs from rotationQueue
+  // Step 3: pick sit-outs avoiding last round if possible
   while(sitouts.length < numSitOuts){
-    if(rotationQueue.length === 0){
-      // rotation finished, reset queue excluding lastSitouts
-      rotationQueue = activePlayers.filter(p => !sitouts.includes(p));
-      shuffle(rotationQueue);
-    }
-    let next = rotationQueue.shift();
-    // avoid immediate repeats if possible
-    if(!lastSitouts.includes(next) || rotationQueue.length + sitouts.length < numSitOuts){
-      sitouts.push(next);
-    } else {
-      // put at end to try later
-      rotationQueue.push(next);
-    }
+    let idx = rotationRemaining.findIndex(p => !lastSitouts.includes(p));
+    if(idx === -1) idx = 0; // unavoidable if all remaining were last round
+    sitouts.push(rotationRemaining.splice(idx,1)[0]);
   }
 
-  // update lastSitouts
   lastSitouts = [...sitouts];
 
-  // remaining players play
+  // Remove sit-outs from rotationRemaining for cycle
+  rotationRemaining = rotationRemaining.filter(p => !sitouts.includes(p));
+
+  // Remaining players play
   let pool = activePlayers.filter(p => !sitouts.includes(p));
   shuffle(pool);
 
@@ -125,11 +133,19 @@ function renderCourts(players){
 }
 
 function renderSitouts(){
+  let html = "";
   if(sitouts.length===0){
-    document.getElementById("sitouts").innerHTML="<b>No one sitting out</b>";
+    html += "<b>No one sitting out</b>";
   } else {
-    document.getElementById("sitouts").innerHTML=`<b class="sitout">Sitting out (priority next game):</b><br>${sitouts.join(", ")}`;
+    html += `<b class="sitout">Sitting out (priority next game):</b><br>${sitouts.join(", ")}`;
+
+    // Show players who haven't sat yet only if sit-outs exist
+    if(rotationRemaining.length > 0){
+      html += `<br><br><b>Players yet to sit out this rotation:</b><br>${rotationRemaining.join(", ")}`;
+    }
   }
+
+  document.getElementById("sitouts").innerHTML = html;
 }
 
 function reset(){
