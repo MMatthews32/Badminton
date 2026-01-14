@@ -2,71 +2,91 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Badminton Picker</title>
+<title>🐿️ Squirrels Picker</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link rel="icon" type="image/png" href="squirrel.png">
+<link rel="apple-touch-icon" href="squirrel.png">
+
 <style>
 body { font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; margin:0; padding:15px; background:#f4f6f8; }
 h1{text-align:center;}
-.card{background:white; padding:15px; border-radius:14px; margin-bottom:15px; box-shadow:0 4px 10px rgba(0,0,0,0.05);}
+.card{background:white; padding:15px; border-radius:16px; margin-bottom:15px; box-shadow:0 4px 10px rgba(0,0,0,0.05);}
 textarea,input{width:100%; font-size:16px; padding:10px; border-radius:10px; border:1px solid #ddd;}
-button{width:100%; font-size:22px; padding:18px; border:none; border-radius:16px; background:#1e88e5; color:white; margin-top:10px;}
-button:active{transform:scale(0.98);}
-.court{font-size:18px; margin-bottom:10px;}
+button{font-size:18px; padding:14px; border:none; border-radius:14px; margin-top:8px;}
+.primary{background:#1e88e5;color:white;width:100%;}
+.green{background:#2e7d32;color:white;}
+.darkgreen{background:#1b5e20;color:white;}
+.grey{background:#aaa;color:white;}
+.courtBox{border-top:1px solid #eee;padding-top:12px;margin-top:12px;}
+.court{font-size:18px; font-weight:600; margin-bottom:6px;}
+.match{margin-bottom:6px;}
+.winnerRow{display:flex; gap:10px;}
+.winnerRow button{flex:1;}
 .sitout{color:#d32f2f; font-weight:600;}
 .hidden{display:none;}
+table{width:100%;border-collapse:collapse;}
+td,th{padding:8px;border-bottom:1px solid #ddd;text-align:left;}
+#sessionInfo{text-align:center;font-weight:600;}
 </style>
 </head>
 <body>
 
-<h1>🏸 Badminton Picker</h1>
+<h1>🐿️ Squirrels Picker</h1>
 
 <div id="setup" class="card">
   <p><b>Players (one per line)</b></p>
   <textarea id="playersInput" rows="6"></textarea>
-
   <p><b>Number of courts</b></p>
   <input id="courtsInput" type="number" min="1" value="1">
-
-  <button onclick="start()">Start Games</button>
+  <button class="primary" onclick="start()">Start Games</button>
 </div>
 
 <div id="game" class="hidden">
+  <div id="sessionInfo" class="card"></div>
   <div id="courts" class="card"></div>
   <div id="sitouts" class="card"></div>
-  <button onclick="nextRound()">▶ Next Round</button>
-  <button onclick="reset()" style="background:#555;margin-top:15px;">Reset</button>
+
+  <button id="nextBtn" class="primary grey" onclick="nextRound()" disabled>▶ Next Round</button>
+
+  <div id="winnersBox" class="card"></div>
+  <button onclick="exportCSV()">⬇ Export Winners CSV</button>
+  <button onclick="reset()" style="background:#555;color:white;width:100%;">Reset</button>
 </div>
 
 <script>
-let allPlayers = [];
-let activePlayers = [];
-let courts = 1;
-let sitouts = [];
-let rotationRemaining = []; // players who haven't sat in this cycle
-let lastSitouts = [];
+let allPlayers=[], activePlayers=[], courts=1;
+let sitouts=[], rotationRemaining=[], lastSitouts=[];
+let pairWins={}, individualWins={}, pendingWinners=0;
 
-function shuffle(a){for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];}}
+function shuffle(a){for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}
+
+function showDate(){
+  let now = new Date();
+  document.getElementById("sessionInfo").innerHTML =
+     now.toLocaleDateString(undefined, {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric"
+    });
+}
 
 function start(){
-  let raw = document.getElementById("playersInput").value.trim();
-  allPlayers = raw.split("\n").map(p=>p.trim()).filter(p=>p);
-  activePlayers = [...allPlayers];
+  allPlayers=document.getElementById("playersInput").value.trim().split("\n").map(p=>p.trim()).filter(p=>p);
+  activePlayers=[...allPlayers];
+  if(activePlayers.length<4) return alert("Need at least 4 players");
 
-  if(activePlayers.length<4){
-    alert("Need at least 4 players");
-    return;
-  }
+  courts=parseInt(document.getElementById("courtsInput").value);
+  let maxCourts=Math.floor(activePlayers.length/4);
+  if(courts>maxCourts){courts=maxCourts;alert("Courts reduced to "+courts);}
 
-  courts = parseInt(document.getElementById("courtsInput").value);
-  let maxCourts = Math.floor(activePlayers.length / 4);
-  if(courts > maxCourts){
-    courts = maxCourts;
-    alert("Not enough players for that many courts. Courts set to " + courts);
-  }
+  rotationRemaining=[...activePlayers];
+  lastSitouts=[];
+  pairWins={};
+  individualWins={};
 
-  sitouts = [];
-  rotationRemaining = [...activePlayers];
-  lastSitouts = [];
+  showDate();
 
   localStorage.setItem("badminton_players",JSON.stringify(allPlayers));
   localStorage.setItem("badminton_courts",courts);
@@ -77,44 +97,33 @@ function start(){
 }
 
 function nextRound(){
-  let totalNeeded = courts * 4;
-  let numSitOuts = activePlayers.length - totalNeeded;
+  let totalNeeded=courts*4;
+  let numSitOuts=activePlayers.length-totalNeeded;
 
-  // If everyone fits on courts, nobody sits out
-  if(numSitOuts <= 0){
-    sitouts = [];
-    lastSitouts = [];
-    let pool = [...activePlayers];
-    shuffle(pool);
+  document.getElementById("nextBtn").disabled=true;
+  document.getElementById("nextBtn").classList.add("grey");
+
+  if(numSitOuts<=0){
+    sitouts=[]; lastSitouts=[];
+    let pool=[...activePlayers]; shuffle(pool);
     renderCourts(pool);
     renderSitouts();
     return;
   }
 
-  // Step 1: reset rotation if not enough remaining
-  if(rotationRemaining.length < numSitOuts){
-    rotationRemaining = [...activePlayers];
-  }
-
-  // Step 2: shuffle remaining for randomness
+  if(rotationRemaining.length<numSitOuts) rotationRemaining=[...activePlayers];
   shuffle(rotationRemaining);
+  sitouts=[];
 
-  sitouts = [];
-
-  // Step 3: pick sit-outs avoiding last round if possible
-  while(sitouts.length < numSitOuts){
-    let idx = rotationRemaining.findIndex(p => !lastSitouts.includes(p));
-    if(idx === -1) idx = 0; // unavoidable if all remaining were last round
+  while(sitouts.length<numSitOuts){
+    let idx=rotationRemaining.findIndex(p=>!lastSitouts.includes(p));
+    if(idx===-1) idx=0;
     sitouts.push(rotationRemaining.splice(idx,1)[0]);
   }
 
-  lastSitouts = [...sitouts];
-
-  // Remove sit-outs from rotationRemaining for cycle
-  rotationRemaining = rotationRemaining.filter(p => !sitouts.includes(p));
-
-  // Remaining players play
-  let pool = activePlayers.filter(p => !sitouts.includes(p));
+  lastSitouts=[...sitouts];
+  rotationRemaining=rotationRemaining.filter(p=>!sitouts.includes(p));
+  let pool=activePlayers.filter(p=>!sitouts.includes(p));
   shuffle(pool);
 
   renderCourts(pool);
@@ -122,46 +131,144 @@ function nextRound(){
 }
 
 function renderCourts(players){
-  let html = "<h2>Courts</h2>";
+  pendingWinners=courts;
+  let html="<h2>Courts</h2>";
+
   for(let i=0;i<courts;i++){
-    let c = players.slice(i*4,i*4+4);
-    if(c.length===4){
-      html += `<div class="court"><b>Court ${i+1}</b>: ${c[0]} & ${c[1]} vs ${c[2]} & ${c[3]}</div>`;
-    }
+    let c=players.slice(i*4,i*4+4);
+    let t1=[c[0],c[1]], t2=[c[2],c[3]];
+
+    html+=`
+    <div class="courtBox" data-team1="${t1.join("||")}" data-team2="${t2.join("||")}">
+      <div class="court">Court ${i+1}</div>
+      <div class="match">${t1[0]} & ${t1[1]} vs ${t2[0]} & ${t2[1]}</div>
+      <div class="winnerRow">
+        <button class="green" onclick="pickWinner(this,1)">🏆 ${t1[0]} & ${t1[1]}</button>
+        <button class="green" onclick="pickWinner(this,2)">🏆 ${t2[0]} & ${t2[1]}</button>
+      </div>
+    </div>`;
   }
-  document.getElementById("courts").innerHTML = html;
+
+  document.getElementById("courts").innerHTML=html;
+}
+
+function pickWinner(btn, teamNum) {
+    let courtBox = btn.closest(".courtBox");
+
+    // Find any previously selected winner in this court
+    let prevSelected = courtBox.querySelector(".winnerRow button.darkgreen");
+    if (prevSelected) {
+        // Undo previous selection
+        let prevTeamNum = prevSelected === courtBox.querySelectorAll(".winnerRow button")[0] ? 1 : 2;
+        let rawPrev = courtBox.dataset["team" + prevTeamNum];
+        let teamPrev = rawPrev.split("||");
+
+        let pairKeyPrev = teamPrev.join(" & ");
+        pairWins[pairKeyPrev]--;
+        if (pairWins[pairKeyPrev] === 0) delete pairWins[pairKeyPrev];
+
+        teamPrev.forEach(p => {
+            individualWins[p]--;
+            if (individualWins[p] === 0) delete individualWins[p];
+        });
+
+        pendingWinners++;
+        prevSelected.classList.remove("darkgreen");
+        prevSelected.classList.add("green");
+    }
+
+    // If clicking the same button again, deselect
+    if (prevSelected === btn) {
+        renderWinners();
+        document.getElementById("nextBtn").disabled = true;
+        document.getElementById("nextBtn").classList.add("grey");
+        return;
+    }
+
+    // Select new winner
+    btn.classList.remove("green");
+    btn.classList.add("darkgreen");
+
+    let raw = courtBox.dataset["team" + teamNum];
+    let team = raw.split("||");
+
+    let pairKey = team.join(" & ");
+    pairWins[pairKey] = (pairWins[pairKey] || 0) + 1;
+    team.forEach(p => {
+        individualWins[p] = (individualWins[p] || 0) + 1;
+    });
+
+    pendingWinners--;
+    renderWinners();
+
+    // Enable next round if all courts have winners
+    if (pendingWinners === 0) {
+        document.getElementById("nextBtn").disabled = false;
+        document.getElementById("nextBtn").classList.remove("grey");
+    }
+}
+
+function renderWinners(){
+  let pairRows=Object.entries(pairWins).sort((a,b)=>b[1]-a[1]);
+  let indRows=Object.entries(individualWins).sort((a,b)=>b[1]-a[1]);
+
+  let html="<h2>🏆 Pair Winners</h2><table><tr><th>Pair</th><th>Wins</th></tr>";
+  pairRows.forEach(r=>html+=`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`);
+  html+="</table><br>";
+
+  html+="<h2>🐿️ Individual Winners</h2><table><tr><th>Player</th><th>Wins</th></tr>";
+  indRows.forEach(r=>html+=`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`);
+  html+="</table>";
+
+  document.getElementById("winnersBox").innerHTML=html;
+}
+
+function exportCSV(){
+  let now = new Date();
+  let dateStr = now.getFullYear() + "-" +
+                String(now.getMonth()+1).padStart(2,"0") + "-" +
+                String(now.getDate()).padStart(2,"0");
+
+  let prettyDate = now.toLocaleDateString(undefined, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric"
+  });
+
+  let csv = `Squirrels Club Night Results\nDate,${prettyDate}\n\n`;
+
+  csv += "Pair,Wins\n";
+  Object.entries(pairWins).forEach(([k,v])=>csv+=`"${k}",${v}\n`);
+
+  csv += "\nIndividual,Wins\n";
+  Object.entries(individualWins).forEach(([k,v])=>csv+=`"${k}",${v}\n`);
+
+  let blob=new Blob([csv],{type:"text/csv"});
+  let a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download = dateStr + "_squirrels_club_night.csv";
+  a.click();
 }
 
 function renderSitouts(){
-  let html = "";
-  if(sitouts.length===0){
-    html += "<b>No one sitting out</b>";
-  } else {
-    html += `<b class="sitout">Sitting out (priority next game):</b><br>${sitouts.join(", ")}`;
-
-    // Show players who haven't sat yet only if sit-outs exist
-    if(rotationRemaining.length > 0){
-      html += `<br><br><b>Players yet to sit out this rotation:</b><br>${rotationRemaining.join(", ")}`;
-    }
+  let html="";
+  if(sitouts.length===0) html="<b>No one sitting out</b>";
+  else{
+    html=`<b class="sitout">Sitting out:</b><br>${sitouts.join(", ")}`;
+    if(rotationRemaining.length>0)
+      html+=`<br><br><b>Players yet to sit:</b><br>${rotationRemaining.join(", ")}`;
   }
-
-  document.getElementById("sitouts").innerHTML = html;
+  document.getElementById("sitouts").innerHTML=html;
 }
 
-function reset(){
-  if(confirm("Back to player selection?")){
-    document.getElementById("game").classList.add("hidden");
-    document.getElementById("setup").classList.remove("hidden");
-  }
-}
+function reset(){ if(confirm("Reset session?")) location.reload(); }
 
-// Auto-load last players
-let saved = JSON.parse(localStorage.getItem("badminton_players")||"null");
+let saved=JSON.parse(localStorage.getItem("badminton_players")||"null");
 if(saved){
-  document.getElementById("playersInput").value = saved.join("\n");
-  document.getElementById("courtsInput").value = localStorage.getItem("badminton_courts")||1;
+  document.getElementById("playersInput").value=saved.join("\n");
+  document.getElementById("courtsInput").value=localStorage.getItem("badminton_courts")||1;
 }
 </script>
-
 </body>
 </html>
